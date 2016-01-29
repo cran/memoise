@@ -1,8 +1,9 @@
-# memoise
+# memoise [![Travis-CI Build Status](https://travis-ci.org/hadley/memoise.svg?branch=master)](https://travis-ci.org/hadley/memoise) [![Coverage Status](https://img.shields.io/codecov/c/github/hadley/memoise/master.svg)](https://codecov.io/github/hadley/memoise?branch=master)
+
 
 If a function is called multiple times with the same input, you can
 often speed things up by keeping a cache of known answers that it can
-retrieve. This is called memoisation <http://en/wikipedia.org/wiki/Memoization>.
+retrieve. This is called memoisation <http://en.wikipedia.org/wiki/Memoization>.
 The `memoise` package provides a simple syntax 
 
     mf <- memoise(f)
