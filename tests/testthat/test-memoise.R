@@ -4,7 +4,7 @@ test_that("memoisation works", {
   fn <- function() { i <<- i + 1; i }
   i <- 0
 
-  expect_that(fnm <- memoise(fn), not(gives_warning()))
+  expect_warning(fnm <- memoise(fn), NA)
   expect_equal(fn(), 1)
   expect_equal(fn(), 2)
   expect_equal(fnm(), 3)
@@ -13,6 +13,7 @@ test_that("memoisation works", {
   expect_equal(fnm(), 3)
 
   expect_false(forget(fn))
+  expect_true(forget(fnm))
   expect_true(forget(fnm))
   expect_equal(fnm(), 5)
 
@@ -24,7 +25,7 @@ test_that("memoisation depends on argument", {
   fn <- function(j) { i <<- i + 1; i }
   i <- 0
 
-  expect_that(fnm <- memoise(fn), not(gives_warning()))
+  expect_warning(fnm <- memoise(fn), NA)
   expect_equal(fn(1), 1)
   expect_equal(fn(1), 2)
   expect_equal(fnm(1), 3)
@@ -50,12 +51,13 @@ test_that("dot arguments are used for hash", {
   fn <- function(...) { i <<- i + 1; i }
   i <- 0
 
-  expect_that(fnm <- memoise(fn), not(gives_warning()))
+  expect_warning(fnm <- memoise(fn), NA)
   expect_equal(fn(1), 1)
   expect_equal(fnm(1), 2)
   expect_equal(fnm(1), 2)
   expect_equal(fnm(1, 2), 3)
   expect_equal(fnm(1), 2)
+  expect_equal(fnm(1, 2), 3)
   expect_equal(fnm(), 4)
 
   expect_true(forget(fnm))
@@ -69,7 +71,7 @@ test_that("default arguments are used for hash", {
   fn <- function(j = 1) { i <<- i + 1; i }
   i <- 0
 
-  expect_that(fnm <- memoise(fn), not(gives_warning()))
+  expect_warning(fnm <- memoise(fn), NA)
   expect_equal(fn(1), 1)
   expect_equal(fnm(1), 2)
   expect_equal(fnm(1), 2)
@@ -84,7 +86,7 @@ test_that("default arguments are evaluated correctly", {
   fn <- function(j = g()) { i <<- i + 1; i }
   i <- 0
 
-  expect_that(fnm <- memoise(fn), not(gives_warning()))
+  expect_warning(fnm <- memoise(fn), NA)
   expect_equal(fn(1), 1)
   expect_equal(fnm(1), 2)
   expect_equal(fnm(1), 2)
@@ -133,7 +135,7 @@ test_that("visibility", {
 })
 
 test_that("can memoise anonymous function", {
-  expect_that(fm <- memoise(function(a = 1) a), not(gives_warning()))
+  expect_warning(fm <- memoise(function(a = 1) a), NA)
   expect_equal(names(formals(fm))[[1]], "a")
   expect_equal(fm(1), 1)
   expect_equal(fm(2), 2)
@@ -141,7 +143,7 @@ test_that("can memoise anonymous function", {
 })
 
 test_that("can memoise primitive", {
-  expect_that(fm <- memoise(`+`), not(gives_warning()))
+  expect_warning(fm <- memoise(`+`), NA)
   expect_equal(names(formals(fm)), names(formals(args(`+`))))
   expect_equal(fm(1, 2), 1 + 2)
   expect_equal(fm(2, 3), 2 + 3)
@@ -218,6 +220,19 @@ test_that("it does have namespace clashes with internal memoise symbols", {
   expect_equal(fun(10), fun_mem(10))
 })
 
+test_that("arguments are evaluated before hashing", {
+  i <- 1
+
+  f <- memoise(function(x, y, z = 3) { x + y + z})
+  f2 <- function(x, y) f(x, y)
+
+  expect_equal(f2(1, 1), 5)
+
+  expect_equal(f2(1, 1), 5)
+
+  expect_equal(f2(2, 2), 7)
+})
+
 context("has_cache")
 test_that("it works as expected with memoised functions", {
   mem_sum <- memoise(sum)
@@ -245,7 +260,7 @@ test_that("it stays the same if not enough time has passed", {
   expect_equal(first, timeout(duration, 7))
   expect_equal(first, timeout(duration, 9))
 
-  expect_that(first, not(equals(timeout(duration, 10))))
+  expect_true(first != timeout(duration, 10))
 
 
   duration <- 100
@@ -256,5 +271,26 @@ test_that("it stays the same if not enough time has passed", {
   expect_equal(first, timeout(duration, 70))
   expect_equal(first, timeout(duration, 99))
 
-  expect_that(first, not(equals(timeout(duration, 100))))
+  expect_true(first != timeout(duration, 100))
+})
+
+context("missing")
+test_that("it works with missing arguments", {
+  fn <- function(x, y) {
+    i <<- i + 1
+    if (missing(y)) {
+      y <- 1
+    }
+    x + y
+  }
+  fnm <- memoise(fn)
+  i <- 0
+
+  expect_equal(fn(1), fnm(1))
+  expect_equal(fn(1, 2), fnm(1, 2))
+  expect_equal(i, 4)
+  fnm(1)
+  expect_equal(i, 4)
+  fnm(1, 2)
+  expect_equal(i, 4)
 })

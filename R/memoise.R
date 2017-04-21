@@ -38,6 +38,7 @@
 #' @param ... optional variables specified as formulas with no RHS to use as
 #' additional restrictions on caching. See Examples for usage.
 #' @param envir Environment of the returned function.
+#' @param cache Cache function.
 #' @seealso \code{\link{forget}}, \code{\link{is.memoised}},
 #'   \code{\link{timeout}}, \url{http://en.wikipedia.org/wiki/Memoization}
 #' @aliases memoise memoize
@@ -70,7 +71,7 @@
 #' formals(b)
 #' formals(memB)
 #' # However, it doesn't know about parameter relevance.
-#' # Different call means different cacheing, no matter
+#' # Different call means different caching, no matter
 #' # that the outcome is the same.
 #' memB(2, dummy="b")
 #'
@@ -93,11 +94,11 @@
 #' memA3 <- memoise(a, ~{current <- as.numeric(Sys.time()); (current - current %% 10) %/% 10 })
 #' memA3(2)
 #'
-#' # The timeout function is any easy way to do the above.
+#' # The timeout function is an easy way to do the above.
 #' memA4 <- memoise(a, ~timeout(10))
 #' memA4(2)
 #' @importFrom stats setNames
-memoise <- memoize <- function(f, ..., envir = environment(f)) {
+memoise <- memoize <- function(f, ..., envir = environment(f), cache = cache_memory()) {
   f_formals <- formals(args(f))
   if(is.memoised(f)) {
     stop("`f` must not be memoised.", call. = FALSE)
@@ -106,23 +107,29 @@ memoise <- memoize <- function(f, ..., envir = environment(f)) {
   f_formal_names <- names(f_formals)
   f_formal_name_list <- lapply(f_formal_names, as.name)
 
-  # list(...)
-  list_call <- make_call(quote(list), f_formal_name_list)
-
   # memoised_function(...)
   init_call_args <- setNames(f_formal_name_list, f_formal_names)
   init_call <- make_call(quote(`_f`), init_call_args)
-
-  cache <- new_cache()
 
   validate_formulas(...)
   additional <- list(...)
 
   memo_f <- eval(
     bquote(function(...) {
-      hash <- `_digest`(c(.(list_call),
-          lapply(`_additional`, function(x) eval(x[[2L]], environment(x)))),
-        algo = "sha512")
+      called_args <- as.list(match.call())[-1]
+
+      # Formals with a default
+      default_args <- Filter(function(x) !identical(x, quote(expr = )), as.list(formals()))
+
+      # That has not been called
+      default_args <- default_args[setdiff(names(default_args), names(called_args))]
+
+      # Evaluate all the arguments
+      args <- c(lapply(called_args, eval, parent.frame()),
+        lapply(default_args, eval, envir = environment()))
+
+      hash <- `_cache`$digest(c(body(`_f`), args,
+          lapply(`_additional`, function(x) eval(x[[2L]], environment(x)))))
 
       if (`_cache`$has_key(hash)) {
         res <- `_cache`$get(hash)
@@ -137,7 +144,7 @@ memoise <- memoize <- function(f, ..., envir = environment(f)) {
         invisible(res$value)
       }
     },
-    as.environment(list(list_call = list_call, init_call = init_call)))
+    as.environment(list(init_call = init_call)))
   )
   formals(memo_f) <- f_formals
   attr(memo_f, "memoised") <- TRUE
@@ -150,7 +157,6 @@ memoise <- memoize <- function(f, ..., envir = environment(f)) {
   memo_f_env <- new.env(parent = envir)
   memo_f_env$`_cache` <- cache
   memo_f_env$`_f` <- f
-  memo_f_env$`_digest` <- digest
   memo_f_env$`_additional` <- additional
   environment(memo_f) <- memo_f_env
 
@@ -224,7 +230,7 @@ forget <- function(f) {
   }
 
   env <- environment(f)
-  if (!exists("_cache", env, inherits = FALSE)) return(FALSE)
+  if (!exists("_cache", env, inherits = FALSE)) return(FALSE) # nocovr
 
   cache <- get("_cache", env)
   cache$reset()
@@ -263,7 +269,7 @@ has_cache <- function(f, ...) {
   # Modify the function body of the function to simply return TRUE and FALSE
   # rather than get or set the results of the cache
   body <- body(f)
-  body[[3]] <- quote(if (`_cache`$has_key(hash)) return(TRUE) else return(FALSE))
+  body[[7]] <- quote(if (`_cache`$has_key(hash)) return(TRUE) else return(FALSE))
   body(f) <- body
 
   f
