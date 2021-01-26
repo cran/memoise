@@ -1,11 +1,14 @@
-context("s3")
+context("gcs")
 
-test_that("using a s3 cache works", {
+test_that("using a gcs cache works", {
   skip_on_cran()
   skip_on_travis_pr()
-  skip_without_aws_credentials()
+  skip_without_gcs_credentials()
 
-  aws <- cache_s3("memoise-tests")
+  googleAuthR::gar_set_client(scopes = "https://www.googleapis.com/auth/cloud-platform")
+  googleAuthR::gar_auth_service(Sys.getenv("GCS_AUTH_FILE"))
+
+  aws <- cache_gcs("memoise-tests")
   i <- 0
   fn <- function() { i <<- i + 1; i }
   fnm <- memoise(fn, cache = aws)

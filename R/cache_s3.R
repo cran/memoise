@@ -15,11 +15,14 @@
 #'
 #'
 #' @param cache_name Bucket name for storing cache files.
+#' @param compress Argument passed to \code{saveRDS}. One of FALSE, "gzip",
+#' "bzip2" or "xz". Default: FALSE.
 #' @inheritParams cache_memory
 #' @export
 
-cache_s3 <- function(cache_name, algo = "sha512") {
+cache_s3 <- function(cache_name, algo = "sha512", compress = FALSE) {
 
+  if (!(requireNamespace("digest"))) { stop("Package `digest` must be installed for `cache_s3()`.") } # nocov
   if (!(requireNamespace("aws.s3"))) { stop("Package `aws.s3` must be installed for `cache_s3()`.") } # nocov
 
   if (!(aws.s3::bucket_exists(cache_name))) {
@@ -37,7 +40,7 @@ cache_s3 <- function(cache_name, algo = "sha512") {
   cache_set <- function(key, value) {
     temp_file <- file.path(path, key)
     on.exit(unlink(temp_file))
-    saveRDS(value, file = temp_file)
+    saveRDS(value, file = temp_file, compress = compress)
     aws.s3::put_object(temp_file, object = key, bucket = cache_name)
   }
 
@@ -50,12 +53,16 @@ cache_s3 <- function(cache_name, algo = "sha512") {
   }
 
   cache_has_key <- function(key) {
-    aws.s3::head_object(object = key, bucket = cache_name)
+    suppressMessages(aws.s3::head_object(object = key, bucket = cache_name))
+  }
+
+  cache_drop_key <- function(key) {
+    aws.s3::delete_bucket(key, bucket = cache_name)
   }
 
   cache_keys <- function() {
     items <- lapply(aws.s3::get_bucket(bucket = cache_name), `[[`, "Key")
-    unlist(Filter(Negate(is.null), items))
+    as.character(unlist(Filter(Negate(is.null), items)))
   }
 
   list(
@@ -64,6 +71,7 @@ cache_s3 <- function(cache_name, algo = "sha512") {
     set = cache_set,
     get = cache_get,
     has_key = cache_has_key,
+    drop_key = cache_drop_key,
     keys = cache_keys
   )
 }

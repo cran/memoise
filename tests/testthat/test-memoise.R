@@ -111,6 +111,69 @@ test_that("symbol collision", {
   expect_equal(cachem(), 5)
 })
 
+test_that("different body avoids collisions", {
+  # Same args, different body
+  m <- cachem::cache_mem()
+  times2 <- memoise(function(x) { x * 2 }, cache = m)
+  times4 <- memoise(function(x) { x * 4 }, cache = m)
+
+  expect_identical(times2(10), 20)
+  expect_equal(m$size(), 1)
+  expect_identical(times4(10), 40)
+  expect_equal(m$size(), 2)
+})
+
+test_that("different formals avoids collisions", {
+  # Different formals (even if not used) avoid collisions, because formals
+  # are used in key.
+  m <- cachem::cache_mem()
+  f <- function(x, y) { x * 2 }
+  times2  <- memoise(function(x, y) { x * 2 }, cache = m)
+  times2a <- memoise(function(x, y = 1) { x * 2 }, cache = m)
+
+  expect_identical(times2(10),  20)
+  expect_equal(m$size(), 1)
+  expect_identical(times2a(10), 20)
+  expect_equal(m$size(), 2)
+})
+
+test_that("same body results in collisions", {
+  # Two identical memoised functions should result in cache hits so that cache
+  # can be shared more easily.
+  # https://github.com/r-lib/memoise/issues/58
+  m <- cachem::cache_mem()
+  times2  <- memoise(function(x, y) { x * 2 }, cache = m)
+  times2a <- memoise(function(x, y) { x * 2 }, cache = m)
+
+  expect_identical(times2(10),  20)
+  expect_identical(times2a(10), 20)
+  expect_equal(m$size(), 1)
+})
+
+test_that("same body results in collisions", {
+  # Even though t2 and t4 produce different results, the memoised versions,
+  # times2 and times4, have cache collisions because the functions have the same
+  # body and formals. It would be nice if we could somehow avoid this.
+  m <- cachem::cache_mem()
+
+  t2 <- local({
+    n <- 2
+    function(x) x * n
+  })
+  t4 <- local({
+    n <- 4
+    function(x) x * n
+  })
+
+  times2 <- memoise(t2, cache = m)
+  times4 <- memoise(t4, cache = m)
+
+  expect_identical(times2(10),  20)
+  expect_identical(times4(10), 20)  # Bad (but expected) cache collision!
+  expect_equal(m$size(), 1)
+})
+
+
 test_that("visibility", {
   vis <- function() NULL
   invis <- function() invisible()
@@ -233,6 +296,38 @@ test_that("arguments are evaluated before hashing", {
   expect_equal(f2(2, 2), 7)
 })
 
+test_that("argument names don't clash with names in memoised function body", {
+  f <- function(
+    # Names in enclosing environment of memoising function
+    `_f`, `_cache`, `_additional`,
+    # Names in body of memoising function
+    mc, encl, called_args, default_args, args, hash, res
+  ) list(`_f`, `_cache`, `_additional`, mc, encl, called_args, default_args, args, hash, res)
+  f_mem <- memoise(f)
+
+  expect_error(f_mem(1, 2, 3, 4, 5, 6, 7, 8, 9, 10), NA)
+  expect_identical(f(1, 2, 3, 4, 5, 6, 7, 8, 9, 10), f_mem(1, 2, 3, 4, 5, 6, 7, 8, 9, 10))
+})
+
+test_that("omit_args respected", {
+  # If no arguments ignored, these 2 rnorm() calls should have different results
+  mem_rnorm <- memoise(rnorm, omit_args = c())
+
+  res1 <- mem_rnorm(10, mean = -100)
+  res2 <- mem_rnorm(10, mean = +100)
+
+  expect_false(identical(res1, res2))
+
+
+  # If 'mean' ignored when hashing, these 2 rnorm() calls will have identical results
+  mem_rnorm <- memoise(rnorm, omit_args = c('mean'))
+
+  res1 <- mem_rnorm(10, mean = -100)
+  res2 <- mem_rnorm(10, mean = +100)
+
+  expect_true(identical(res1, res2))
+})
+
 context("has_cache")
 test_that("it works as expected with memoised functions", {
   mem_sum <- memoise(sum)
@@ -248,6 +343,30 @@ test_that("it works as expected with memoised functions", {
 
 test_that("it errors with an un-memoised function", {
   expect_error(has_cache(sum)(1, 2, 3), "`f` is not a memoised function.")
+})
+
+context("drop_cache")
+test_that("it works as expected with memoised functions", {
+  mem_sum <- memoise(sum)
+  expect_false(drop_cache(mem_sum)(1, 2, 3))
+
+  mem_sum(1, 2, 3)
+  mem_sum(2, 3, 4)
+
+  expect_true(has_cache(mem_sum)(1, 2, 3))
+  expect_true(has_cache(mem_sum)(2, 3, 4))
+
+  expect_true(drop_cache(mem_sum)(1, 2, 3))
+
+  expect_false(has_cache(mem_sum)(1, 2, 3))
+  expect_true(has_cache(mem_sum)(2, 3, 4))
+
+  mem_sum <- memoise(sum)
+  expect_false(drop_cache(mem_sum)(1, 2, 3))
+})
+
+test_that("it errors with an un-memoised function", {
+  expect_error(drop_cache(sum)(1, 2, 3), "`f` is not a memoised function.")
 })
 
 context("timeout")
