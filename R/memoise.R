@@ -61,7 +61,8 @@
 #'   which is used as a cache key.
 #' @param omit_args Names of arguments to ignore when calculating hash.
 #' @seealso \code{\link{forget}}, \code{\link{is.memoised}},
-#'   \code{\link{timeout}}, \url{https://en.wikipedia.org/wiki/Memoization}
+#'   \code{\link{timeout}}, \url{https://en.wikipedia.org/wiki/Memoization},
+#'   \code{\link{drop_cache}}
 #' @aliases memoise memoize
 #' @export memoise memoize
 #' @examples
@@ -126,7 +127,7 @@ memoise <- memoize <- function(
   envir = environment(f),
   cache = cachem::cache_mem(max_size = 1024 * 1024^2),
   omit_args = c(),
-  hash = rlang::hash)
+  hash = function(x) rlang::hash(x))
 {
   f_formals <- formals(args(f))
   if(is.memoised(f)) {
@@ -255,11 +256,12 @@ print.memoised <- function(x, ...) {
 }
 
 #' Forget past results.
-#' Resets the cache of a memoised function.
+#' Resets the cache of a memoised function. Use \code{\link{drop_cache}} to
+#' reset the cache only for particular arguments.
 #'
 #' @param f memoised function
 #' @export
-#' @seealso \code{\link{memoise}}, \code{\link{is.memoised}}
+#' @seealso \code{\link{memoise}}, \code{\link{is.memoised}}, \code{\link{drop_cache}}
 #' @examples
 #' memX <- memoise(function() { Sys.sleep(1); runif(1) })
 #' # The forget() function
@@ -300,7 +302,7 @@ is.memoised <- is.memoized <- function(f) {
 #' @param f Function to test.
 #' @return A function, with the same arguments as \code{f}, that can be called to test
 #'   if \code{f} has cached results.
-#' @seealso \code{\link{is.memoised}}, \code{\link{memoise}}
+#' @seealso \code{\link{is.memoised}}, \code{\link{memoise}}, \code{\link{drop_cache}}
 #' @export
 #' @examples
 #' mem_sum <- memoise(sum)
@@ -313,7 +315,7 @@ has_cache <- function(f) {
   # Modify the function body of the function to simply return TRUE and FALSE
   # rather than get or set the results of the cache
   body <- body(f)
-  body[[11]] <- quote(return(encl$`_cache`$exists(key)))
+  body[[10]] <- quote(return(encl$`_cache`$exists(key)))
   body(f) <- body
 
   f
